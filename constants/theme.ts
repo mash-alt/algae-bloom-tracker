@@ -1,30 +1,66 @@
 /**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
+ * AlgaEye Design System - Nature-inspired color palette for environmental tracking
  */
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+// Primary colors - Nature inspired
+const primaryGreen = '#2E7D6E';
+const primaryBlue = '#0D7BA8';
+const lightAqua = '#E8F4F8';
+const lightGreen = '#E8F5E9';
+const earthTone = '#D4A574';
+const white = '#FFFFFF';
+const darkText = '#1A1A1A';
+const lightText = '#666666';
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
-    tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
-    tabIconSelected: tintColorLight,
+    text: darkText,
+    background: '#F9FAFB',
+    tint: primaryGreen,
+    icon: lightText,
+    tabIconDefault: lightText,
+    tabIconSelected: primaryGreen,
+    // Extended palette
+    primary: primaryGreen,
+    secondary: primaryBlue,
+    accent: earthTone,
+    success: '#27AE60',
+    warning: '#F39C12',
+    danger: '#E74C3C',
+    lightAqua,
+    lightGreen,
+    cardBackground: white,
+    border: '#E0E0E0',
+    shadow: '#00000015',
   },
   dark: {
     text: '#ECEDEE',
-    background: '#151718',
-    tint: tintColorDark,
+    background: '#0F1419',
+    tint: primaryGreen,
     icon: '#9BA1A6',
     tabIconDefault: '#9BA1A6',
-    tabIconSelected: tintColorDark,
+    tabIconSelected: primaryGreen,
+    // Extended palette
+    primary: primaryGreen,
+    secondary: primaryBlue,
+    accent: earthTone,
+    success: '#27AE60',
+    warning: '#F39C12',
+    danger: '#E74C3C',
+    lightAqua: '#1A3A3F',
+    lightGreen: '#1A2E2A',
+    cardBackground: '#1A1F26',
+    border: '#2A3035',
+    shadow: '#00000030',
   },
+};
+
+export const Gradients = {
+  primaryToSecondary: [primaryGreen, primaryBlue],
+  greenToAqua: [primaryGreen, lightAqua],
+  blueToWhite: [primaryBlue, lightAqua],
 };
 
 export const Fonts = Platform.select({
