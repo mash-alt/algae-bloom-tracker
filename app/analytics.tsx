@@ -1,37 +1,92 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   View,
   StyleSheet,
   Text,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Card } from '@/components/ui/card';
 import { ThemedText } from '@/components/themed-text';
-
-const { width } = Dimensions.get('window');
+import { useBloomReports } from '@/hooks/use-bloom-reports';
+import {
+  filterReportsByScope,
+  formatRelativeTime,
+  getReportDate,
+  REPORT_SCOPE_OPTIONS,
+  summarizeLocationReports,
+  type ReportScopeKey,
+} from '@/services/report-insights';
 
 export function AnalyticsScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const [timeRange, setTimeRange] = useState('month');
+  const [scope, setScope] = useState<ReportScopeKey>('global');
+  const { reports, loading, error } = useBloomReports();
 
   const timeRanges = ['week', 'month', 'year'];
 
-  // Mock chart data
-  const chartData = [
-    { day: 'Mon', value: 45, max: 100 },
-    { day: 'Tue', value: 62, max: 100 },
-    { day: 'Wed', value: 38, max: 100 },
-    { day: 'Thu', value: 85, max: 100 },
-    { day: 'Fri', value: 72, max: 100 },
-    { day: 'Sat', value: 91, max: 100 },
-    { day: 'Sun', value: 58, max: 100 },
-  ];
+  const filteredReports = useMemo(() => filterReportsByScope(reports, scope), [reports, scope]);
+
+  const chartData = useMemo(() => {
+    const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const counts = weekDays.map((day) => ({ day, value: 0, max: 100 }));
+
+    const now = new Date();
+    const timeWindowDays = timeRange === 'week' ? 7 : timeRange === 'month' ? 30 : 365;
+    const cutoff = new Date(now.getTime() - timeWindowDays * 24 * 60 * 60 * 1000);
+
+    filteredReports.forEach((report) => {
+      const date = getReportDate(report);
+      if (date < cutoff) return;
+      const bucket = counts[date.getDay()];
+      bucket.value += 1;
+    });
+
+    return counts;
+  }, [filteredReports, timeRange]);
+
+  const overview = useMemo(() => {
+    const total = filteredReports.length;
+    const areas = summarizeLocationReports(filteredReports).length;
+    const now = new Date();
+    const recentWindow = 7 * 24 * 60 * 60 * 1000;
+    const previousWindow = 14 * 24 * 60 * 60 * 1000;
+    const recent = filteredReports.filter((report) => now.getTime() - getReportDate(report).getTime() <= recentWindow).length;
+    const previous = filteredReports.filter((report) => {
+      const age = now.getTime() - getReportDate(report).getTime();
+      return age > recentWindow && age <= previousWindow;
+    }).length;
+    const trend = previous === 0 ? (recent > 0 ? 100 : 0) : Math.round(((recent - previous) / previous) * 100);
+
+    return { total, areas, trend };
+  }, [filteredReports]);
+
+  const severityStats = useMemo(() => {
+    const totals = filteredReports.reduce(
+      (acc, report) => {
+        if (report.severity === 'Severe') acc.high += 1;
+        else if (report.severity === 'Moderate' || report.severity === 'Mild') acc.medium += 1;
+        else acc.low += 1;
+        return acc;
+      },
+      { high: 0, medium: 0, low: 0 }
+    );
+
+    const max = Math.max(totals.high, totals.medium, totals.low, 1);
+    return [
+      { label: 'High Severity', value: totals.high, color: colors.danger, width: (totals.high / max) * 100 },
+      { label: 'Medium Severity', value: totals.medium, color: colors.warning, width: (totals.medium / max) * 100 },
+      { label: 'Low Severity', value: totals.low, color: colors.success, width: (totals.low / max) * 100 },
+    ];
+  }, [filteredReports, colors.danger, colors.warning, colors.success]);
+
+  const topLocations = useMemo(() => summarizeLocationReports(filteredReports).slice(0, 5), [filteredReports]);
 
   return (
     <SafeAreaView
@@ -87,6 +142,35 @@ export function AnalyticsScreen() {
           ))}
         </View>
 
+        {/* Location Scope Selector */}
+        <View style={styles.scopeContainer}>
+          <ThemedText style={styles.scopeLabel}>Scope</ThemedText>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scopeScroll}>
+            {REPORT_SCOPE_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.key}
+                style={[
+                  styles.scopeButton,
+                  {
+                    backgroundColor: scope === option.key ? colors.primary : colors.cardBackground,
+                    borderColor: scope === option.key ? colors.primary : colors.border,
+                  },
+                ]}
+                onPress={() => setScope(option.key)}
+              >
+                <ThemedText
+                  style={[
+                    styles.scopeText,
+                    { color: scope === option.key ? colors.cardBackground : colors.text, fontWeight: scope === option.key ? '700' : '500' },
+                  ]}
+                >
+                  {option.label}
+                </ThemedText>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
         {/* Overview Stats */}
         <Card elevation="low" style={styles.overviewCard}>
           <View style={styles.overviewRow}>
@@ -101,7 +185,7 @@ export function AnalyticsScreen() {
                   { color: colors.primary },
                 ]}
               >
-                156
+                {loading ? '—' : overview.total}
               </ThemedText>
             </View>
             <View style={styles.overviewDivider} />
@@ -116,7 +200,7 @@ export function AnalyticsScreen() {
                   { color: colors.warning },
                 ]}
               >
-                +12%
+                {loading ? '—' : `${overview.trend >= 0 ? '+' : ''}${overview.trend}%`}
               </ThemedText>
             </View>
             <View style={styles.overviewDivider} />
@@ -131,7 +215,7 @@ export function AnalyticsScreen() {
                   { color: colors.secondary },
                 ]}
               >
-                23
+                {loading ? '—' : overview.areas}
               </ThemedText>
             </View>
           </View>
@@ -140,11 +224,19 @@ export function AnalyticsScreen() {
         {/* Chart */}
         <Card elevation="low" style={styles.chartCard}>
           <ThemedText type="subtitle" style={styles.chartTitle}>
-            Weekly Activity
+            {timeRange.charAt(0).toUpperCase() + timeRange.slice(1)} Activity
           </ThemedText>
+          {loading ? (
+            <View style={styles.loadingState}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : error ? (
+            <ThemedText style={[styles.emptyState, { color: colors.icon }]}>Analytics are temporarily unavailable.</ThemedText>
+          ) : null}
           <View style={styles.chart}>
             {chartData.map((data, index) => {
-              const heightPercentage = (data.value / data.max) * 100;
+              const maxValue = Math.max(...chartData.map((item) => item.value), 1);
+              const heightPercentage = data.value === 0 ? 6 : (data.value / maxValue) * 100;
               return (
                 <View key={index} style={styles.chartBar}>
                   <View
@@ -180,11 +272,7 @@ export function AnalyticsScreen() {
             Severity Distribution
           </ThemedText>
 
-          {[
-            { label: 'High Severity', value: 45, color: colors.danger },
-            { label: 'Medium Severity', value: 65, color: colors.warning },
-            { label: 'Low Severity', value: 46, color: colors.success },
-          ].map((item, index) => (
+          {severityStats.map((item, index) => (
             <View key={index} style={styles.distributionItem}>
               <View style={styles.distributionLabel}>
                 <View
@@ -200,7 +288,7 @@ export function AnalyticsScreen() {
                   style={[
                     styles.progressFill,
                     {
-                      width: `${(item.value / 100) * 100}%`,
+                      width: `${item.width}%`,
                       backgroundColor: item.color,
                     },
                   ]}
@@ -216,26 +304,16 @@ export function AnalyticsScreen() {
         {/* Top Locations */}
         <Card elevation="low" style={styles.locationsCard}>
           <ThemedText type="subtitle" style={styles.locationsTitle}>
-            Most Active Locations
+            Most Active Locations {scope === 'global' ? '(Global)' : `(${REPORT_SCOPE_OPTIONS.find((option) => option.key === scope)?.label})`}
           </ThemedText>
-
-          {[
-            {
-              name: 'Lake San Francisco',
-              reports: 34,
-              severity: 'high',
-            },
-            {
-              name: 'Bay Area Waters',
-              reports: 28,
-              severity: 'medium',
-            },
-            {
-              name: 'Coastal Reserve',
-              reports: 18,
-              severity: 'low',
-            },
-          ].map((location, index) => {
+          {loading ? (
+            <View style={styles.loadingState}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : topLocations.length === 0 ? (
+            <ThemedText style={[styles.emptyState, { color: colors.icon }]}>No location data for this scope yet.</ThemedText>
+          ) : (
+            topLocations.map((location, index) => {
             const getSeverityBg = () => {
               switch (location.severity) {
                 case 'high':
@@ -264,7 +342,7 @@ export function AnalyticsScreen() {
 
             return (
               <View
-                key={index}
+                key={location.key}
                 style={[
                   styles.locationItem,
                   {
@@ -275,7 +353,7 @@ export function AnalyticsScreen() {
               >
                 <View>
                   <ThemedText style={styles.locationName}>
-                    {location.name}
+                    {location.label}
                   </ThemedText>
                   <ThemedText
                     style={[
@@ -283,7 +361,7 @@ export function AnalyticsScreen() {
                       { color: colors.icon },
                     ]}
                   >
-                    {location.reports} reports
+                      {location.count} reports • {location.reports.length} items in cluster
                   </ThemedText>
                 </View>
                 <View
@@ -303,7 +381,8 @@ export function AnalyticsScreen() {
                 </View>
               </View>
             );
-          })}
+          })
+          )}
         </Card>
 
         <View style={styles.footer} />
@@ -329,6 +408,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginBottom: 20,
+  },
+  scopeContainer: {
+    marginBottom: 20,
+  },
+  scopeLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  scopeScroll: {
+    gap: 8,
+  },
+  scopeButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  scopeText: {
+    fontSize: 12,
   },
   timeRangeButton: {
     flex: 1,
@@ -383,6 +482,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-end',
     gap: 6,
+  },
+  loadingState: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  emptyState: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 12,
   },
   chartBar: {
     flex: 1,

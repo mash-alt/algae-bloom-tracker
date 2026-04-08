@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { router } from 'expo-router';
 import {
   View,
   StyleSheet,
@@ -13,12 +14,22 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Card, Badge } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ThemedText } from '@/components/themed-text';
+import { logout } from '@/services/auth';
 
 export function ProfileScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const [notifications, setNotifications] = useState(true);
   const [gpsTracking, setGpsTracking] = useState(true);
+
+  const handleSignOut = async () => {
+    try {
+      await logout();
+      router.replace('/auth');
+    } catch {
+      // noop - keep user on current screen if sign out fails
+    }
+  };
 
   return (
     <SafeAreaView
@@ -224,7 +235,7 @@ export function ProfileScreen() {
         />
         <Button
           title="Sign Out"
-          onPress={() => {}}
+          onPress={handleSignOut}
           variant="outline"
           size="large"
           fullWidth

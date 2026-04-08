@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /bloomReports/{reportId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.resource.data.userID == request.auth.uid
+        && request.resource.data.photoURL is string
+        && request.resource.data.coordinates.lat is number
+        && request.resource.data.coordinates.lng is number
+        && request.resource.data.severity is string
+        && request.resource.data.confidence is number
+        && request.resource.data.timestamp is string;
+
+      allow update, delete: if isOwner(resource.data.userID);
+    }
+  }
+}

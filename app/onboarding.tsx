@@ -1,24 +1,25 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
   ScrollView,
   Dimensions,
-  Image,
   Text,
 } from 'react-native';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Button } from '@/components/ui/button';
 import { ThemedText } from '@/components/themed-text';
 
-const { height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
-export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
+export function OnboardingScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const [currentSlide, setCurrentSlide] = useState(0);
+  const scrollRef = useRef<ScrollView>(null);
 
   const slides = [
     {
@@ -46,13 +47,14 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
       ]}
     >
       <ScrollView
+        ref={scrollRef}
         scrollEventThrottle={16}
         pagingEnabled
         horizontal
         showsHorizontalScrollIndicator={false}
         onScroll={(e) => {
           const slide = Math.round(
-            e.nativeEvent.contentOffset.x / Dimensions.get('window').width
+            e.nativeEvent.contentOffset.x / width
           );
           setCurrentSlide(slide);
         }}
@@ -63,7 +65,7 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
             style={[
               styles.slide,
               {
-                width: Dimensions.get('window').width,
+                width,
                 backgroundColor: colors.background,
               },
             ]}
@@ -112,7 +114,12 @@ export function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
           title={currentSlide === slides.length - 1 ? 'Get Started' : 'Next'}
           onPress={() => {
             if (currentSlide === slides.length - 1) {
-              onComplete();
+              router.replace('/(tabs)');
+            } else {
+              scrollRef.current?.scrollTo({
+                x: (currentSlide + 1) * width,
+                animated: true,
+              });
             }
           }}
           variant="primary"

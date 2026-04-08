@@ -1,23 +1,64 @@
 import React from 'react';
 import {
+  ActivityIndicator,
   View,
   StyleSheet,
   ScrollView,
   Text,
   TouchableOpacity,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Card, Badge } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ThemedText } from '@/components/themed-text';
-import { useRouter } from 'expo-router';
+import { useBloomReports } from '@/hooks/use-bloom-reports';
+import {
+  filterReportsByScope,
+  formatRelativeTime,
+  getReportDate,
+  getReportLocationLabel,
+  sortReportsNewestFirst,
+  summarizeLocationReports,
+} from '@/services/report-insights';
+import { auth } from '@/services/firebase';
 
 export default function HomeScreen() {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'light'];
   const router = useRouter();
+  const { reports, loading, error } = useBloomReports();
+
+  const sortedReports = sortReportsNewestFirst(reports);
+  const myReports = sortedReports.filter((report) => {
+    const currentUserId = auth.currentUser?.uid;
+    return currentUserId ? report.userID === currentUserId : true;
+  });
+
+  const latestReports = myReports.length > 0 ? myReports.slice(0, 3) : sortedReports.slice(0, 3);
+  const alertSummaries = summarizeLocationReports(reports)
+    .filter((summary) => summary.count > 0)
+    .slice(0, 2)
+    .map((summary) => ({
+      title:
+        summary.severity === 'high'
+          ? 'High Bloom Activity'
+          : summary.severity === 'medium'
+          ? 'Medium Activity Alert'
+          : 'Low Activity Watch',
+      location: summary.label,
+      badge: summary.severity === 'high' ? 'HIGH' : summary.severity === 'medium' ? 'MEDIUM' : 'LOW',
+      timeLabel: `Updated ${formatRelativeTime(summary.latestDate)} • ${summary.count} recent reports`,
+      backgroundColor:
+        summary.severity === 'high'
+          ? colors.danger + '10'
+          : summary.severity === 'medium'
+          ? colors.warning + '10'
+          : colors.success + '10',
+      variant: summary.severity === 'high' ? 'danger' : summary.severity === 'medium' ? 'warning' : 'success',
+    }));
 
   return (
     <SafeAreaView
@@ -103,73 +144,42 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          <Card
-            elevation="medium"
-            style={[
-              styles.alertCard,
-              { backgroundColor: colors.danger + '10' },
-            ]}
-            onPress={() => {}}
-          >
-            <View style={styles.alertHeader}>
-              <View>
-                <ThemedText style={styles.alertTitle}>
-                  High Bloom Activity
-                </ThemedText>
-                <ThemedText
-                  style={[
-                    styles.alertLocation,
-                    { color: colors.icon },
-                  ]}
-                >
-                  Lake San Francisco
-                </ThemedText>
-              </View>
-              <Badge label="HIGH" variant="danger" />
-            </View>
-            <ThemedText
-              style={[
-                styles.alertTime,
-                { color: colors.icon },
-              ]}
-            >
-              Updated 2 hours ago • 12 recent reports
-            </ThemedText>
-          </Card>
-
-          <Card
-            elevation="medium"
-            style={[
-              styles.alertCard,
-              { backgroundColor: colors.warning + '10' },
-            ]}
-            onPress={() => {}}
-          >
-            <View style={styles.alertHeader}>
-              <View>
-                <ThemedText style={styles.alertTitle}>
-                  Medium Activity Alert
-                </ThemedText>
-                <ThemedText
-                  style={[
-                    styles.alertLocation,
-                    { color: colors.icon },
-                  ]}
-                >
-                  Bay Area Waters
-                </ThemedText>
-              </View>
-              <Badge label="MEDIUM" variant="warning" />
-            </View>
-            <ThemedText
-              style={[
-                styles.alertTime,
-                { color: colors.icon },
-              ]}
-            >
-              Updated 4 hours ago • 7 recent reports
-            </ThemedText>
-          </Card>
+          {loading ? (
+            <Card elevation="low" style={styles.stateCard}>
+              <ActivityIndicator color={colors.primary} />
+            </Card>
+          ) : error ? (
+            <Card elevation="low" style={styles.stateCard}>
+              <ThemedText style={[styles.emptyText, { color: colors.icon }]}>Unable to load alerts right now.</ThemedText>
+            </Card>
+          ) : alertSummaries.length === 0 ? (
+            <Card elevation="low" style={styles.stateCard}>
+              <ThemedText style={[styles.emptyText, { color: colors.icon }]}>No active alerts yet. New reports will appear here automatically.</ThemedText>
+            </Card>
+          ) : (
+            alertSummaries.map((alert) => (
+              <Card
+                key={`${alert.title}-${alert.location}`}
+                elevation="medium"
+                style={[
+                  styles.alertCard,
+                  { backgroundColor: alert.backgroundColor },
+                ]}
+                onPress={() => router.push('/analytics')}
+              >
+                <View style={styles.alertHeader}>
+                  <View>
+                    <ThemedText style={styles.alertTitle}>{alert.title}</ThemedText>
+                    <ThemedText style={[styles.alertLocation, { color: colors.icon }]}>
+                      {alert.location}
+                    </ThemedText>
+                  </View>
+                  <Badge label={alert.badge} variant={alert.variant} />
+                </View>
+                <ThemedText style={[styles.alertTime, { color: colors.icon }]}>{alert.timeLabel}</ThemedText>
+              </Card>
+            ))
+          )}
         </View>
 
         {/* Recent Activity */}
@@ -185,67 +195,60 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {[1, 2, 3].map((i) => (
-            <Card key={i} elevation="low" style={styles.reportCard}>
-              <View style={styles.reportHeader}>
-                <View>
-                  <ThemedText style={styles.reportTitle}>
-                    Report #{24 - i}
-                  </ThemedText>
-                  <ThemedText
+          {latestReports.length === 0 ? (
+            <Card elevation="low" style={styles.stateCard}>
+              <ThemedText style={[styles.emptyText, { color: colors.icon }]}>Your recent reports will show up here after you submit them.</ThemedText>
+            </Card>
+          ) : (
+            latestReports.map((report) => (
+              <Card key={report.id} elevation="low" style={styles.reportCard}>
+                <View style={styles.reportHeader}>
+                  <View>
+                    <ThemedText style={styles.reportTitle}>
+                      {report.bloom_type || 'Bloom report'}
+                    </ThemedText>
+                    <ThemedText style={[styles.reportTime, { color: colors.icon }]}>
+                      {formatRelativeTime(getReportDate(report))}
+                    </ThemedText>
+                  </View>
+                  <View
                     style={[
-                      styles.reportTime,
-                      { color: colors.icon },
-                    ]}
-                  >
-                    {i} day{i > 1 ? 's' : ''} ago
-                  </ThemedText>
-                </View>
-                <View
-                  style={[
-                    styles.reportBadge,
-                    {
-                      backgroundColor:
-                        i === 1
-                          ? colors.danger + '20'
-                          : i === 2
-                          ? colors.warning + '20'
-                          : colors.success + '20',
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.reportBadgeText,
+                      styles.reportBadge,
                       {
-                        color:
-                          i === 1
-                            ? colors.danger
-                            : i === 2
-                            ? colors.warning
-                            : colors.success,
+                        backgroundColor:
+                          report.severity === 'Severe'
+                            ? colors.danger + '20'
+                            : report.severity === 'Moderate' || report.severity === 'Mild'
+                            ? colors.warning + '20'
+                            : colors.success + '20',
                       },
                     ]}
                   >
-                    {i === 1 ? 'HIGH' : i === 2 ? 'MED' : 'LOW'}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.reportBadgeText,
+                        {
+                          color:
+                            report.severity === 'Severe'
+                              ? colors.danger
+                              : report.severity === 'Moderate' || report.severity === 'Mild'
+                              ? colors.warning
+                              : colors.success,
+                        },
+                      ]}
+                    >
+                      {report.severity === 'Severe'
+                        ? 'HIGH'
+                        : report.severity === 'Moderate'
+                        ? 'MED'
+                        : 'LOW'}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-              <ThemedText
-                style={[
-                  styles.reportLocation,
-                  { color: colors.icon },
-                ]}
-              >
-                📍{' '}
-                {i === 1
-                  ? 'Lake San Francisco'
-                  : i === 2
-                  ? 'Bay Area Waters'
-                  : 'Coastal Reserve'}
-              </ThemedText>
-            </Card>
-          ))}
+                <ThemedText style={[styles.reportLocation, { color: colors.icon }]}>📍 {getReportLocationLabel(report)}</ThemedText>
+              </Card>
+            ))
+          )}
         </View>
 
         {/* Tips & Education */}
@@ -360,6 +363,16 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingHorizontal: 12,
     paddingVertical: 12,
+  },
+  stateCard: {
+    paddingHorizontal: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   alertHeader: {
     flexDirection: 'row',

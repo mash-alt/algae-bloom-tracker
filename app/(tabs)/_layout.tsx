@@ -38,21 +38,21 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="../capture"
+        name="capture"
         options={{
           title: 'Capture',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="camera.fill" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="../analytics"
+        name="analytics"
         options={{
           title: 'Analytics',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="chart.bar.fill" color={color} />,
         }}
       />
       <Tabs.Screen
-        name="../profile"
+        name="profile"
         options={{
           title: 'Profile',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.fill" color={color} />,

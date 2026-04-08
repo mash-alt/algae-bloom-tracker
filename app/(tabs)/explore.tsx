@@ -1,4 +1,4 @@
-import { MapScreen } from '../map';
+import MapScreen from '../map';
 
 export default function ExploreScreen() {
   return <MapScreen />;
